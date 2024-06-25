@@ -1,11 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"log"
-	"os"
 
 	"github.com/joho/godotenv"
+	"oxion.xyz/gomusic/cmd"
 )
 
 func init() {
@@ -16,10 +15,5 @@ func init() {
 }
 
 func main() {
-	test, exists := os.LookupEnv("TEST")
-	if exists {
-		fmt.Printf("Found TEST variable %s\n", test)
-	} else {
-		fmt.Println("No TEST variable found")
-	}
+	cmd.Execute()
 }
