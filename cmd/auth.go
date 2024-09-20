@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/zmb3/spotify/v2"
 	spotifyauth "github.com/zmb3/spotify/v2/auth"
 )
@@ -27,28 +27,26 @@ var (
 var authCmd = &cobra.Command{
 	Use:   "auth",
 	Short: "Authenticate with Spotify",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: run,
+	Long:  `Authenticate with Spotify so that this app can access your Spotify data`,
+	Run:   runAuthCmd,
 }
 
-func run(cmd *cobra.Command, args []string) {
-	// Ensure the necessary environment variables exist
-	_, exists := os.LookupEnv("SPOTIFY_ID")
-	if !exists {
-		log.Fatal("SPOTIFY_ID does not exist")
+func runAuthCmd(cmd *cobra.Command, args []string) {
+	// Get the Spotify client ID & secret
+	if !(viper.IsSet("spotify.id") && viper.IsSet("spotify.secret")) {
+		fmt.Println("`spotify.id` and `spotify.secret` must be set in the config file")
+		return
 	}
-	_, exists = os.LookupEnv("SPOTIFY_SECRET")
-	if !exists {
-		log.Fatal("SPOTIFY_SECRET does not exist")
-	}
+	spotifyID := viper.GetString("spotify.id")
+	spotifySecret := viper.GetString("spotify.secret")
 
 	// Initialize auth
-	auth = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopePlaylistReadPrivate))
+	auth = spotifyauth.New(
+		spotifyauth.WithRedirectURL(redirectURI),
+		spotifyauth.WithScopes(spotifyauth.ScopePlaylistReadPrivate),
+		spotifyauth.WithClientID(spotifyID),
+		spotifyauth.WithClientSecret(spotifySecret),
+	)
 
 	// Start an HTTP server to receive the callback
 	http.HandleFunc("/callback", completeAuth)
