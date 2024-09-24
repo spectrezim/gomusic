@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -16,12 +18,6 @@ import (
 // These can be found (and changed, if needed) on the Spotify for Developers
 // Web Dashboard.
 const redirectURI = "http://localhost:8080/callback"
-
-var (
-	auth  *spotifyauth.Authenticator
-	ch    = make(chan *spotify.Client)
-	state = "awio43n10348"
-)
 
 // TODO: Update long description
 var authCmd = &cobra.Command{
@@ -39,9 +35,12 @@ func runAuthCmd(cmd *cobra.Command, args []string) {
 	}
 	spotifyID := viper.GetString("spotify.id")
 	spotifySecret := viper.GetString("spotify.secret")
+	// TODO randomly generate state
+	state := "awio43n10348"
+	ch := make(chan *spotify.Client)
 
 	// Initialize auth
-	auth = spotifyauth.New(
+	auth := spotifyauth.New(
 		spotifyauth.WithRedirectURL(redirectURI),
 		spotifyauth.WithScopes(spotifyauth.ScopePlaylistReadPrivate),
 		spotifyauth.WithClientID(spotifyID),
@@ -49,6 +48,34 @@ func runAuthCmd(cmd *cobra.Command, args []string) {
 	)
 
 	// Start an HTTP server to receive the callback
+	completeAuth := func(w http.ResponseWriter, r *http.Request) {
+		// Check state
+		st := r.FormValue("state")
+		if st != state {
+			http.NotFound(w, r)
+			log.Fatalf("State mismatch: %s != %s\n", st, state)
+		}
+
+		// Exchange code for a token
+		tok, err := auth.Token(r.Context(), state, r)
+		if err != nil {
+			http.Error(w, "Couldn't get token", http.StatusForbidden)
+			log.Fatal(err)
+		}
+
+		// Store the token for later use
+		tokJson, err := json.Marshal(tok)
+		if err != nil {
+			log.Fatalf("Error marshaling token to json: %v\n", err)
+		}
+		os.WriteFile("./token.json", tokJson, 0644)
+
+		// Use the token to get an authenticated client
+		client := spotify.New(auth.Client(r.Context(), tok))
+		fmt.Fprintf(w, "Login completed!")
+		ch <- client
+	}
+
 	http.HandleFunc("/callback", completeAuth)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Got request for:", r.URL.String())
@@ -72,27 +99,6 @@ func runAuthCmd(cmd *cobra.Command, args []string) {
 		log.Fatal(err)
 	}
 	fmt.Println("You are logged in as:", user.ID)
-}
-
-func completeAuth(w http.ResponseWriter, r *http.Request) {
-	// Check state
-	st := r.FormValue("state")
-	if st != state {
-		http.NotFound(w, r)
-		log.Fatalf("State mismatch: %s != %s\n", st, state)
-	}
-
-	// Exchange code for a token
-	tok, err := auth.Token(r.Context(), state, r)
-	if err != nil {
-		http.Error(w, "Couldn't get token", http.StatusForbidden)
-		log.Fatal(err)
-	}
-
-	// Use the token to get an authenticated client
-	client := spotify.New(auth.Client(r.Context(), tok))
-	fmt.Fprintf(w, "Login completed!")
-	ch <- client
 }
 
 func init() {
